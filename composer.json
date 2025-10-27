@@ -1,0 +1,18 @@
+{
+    "name": "usuario/mundo-gamer",
+    "autoload": {
+        "psr-4": {
+            "Usuario\\MundoGamer\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Fernando Antonio"
+        }
+    ],
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.1",
+        "symfony/string": "^7.3",
+        "monolog/monolog": "^3.9"
+    }
+}
