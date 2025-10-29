@@ -1,10 +1,10 @@
 <?php
-$host = "localhost";
-$user = "root";
-$pass = "";
-$db   = "mundogamer_db";
-$port = 3307;
-$conn = new mysqli($host, $user, $pass, $db, $port);
+require_once 'database.php';
+
+$db = new Database();
+
+$conn = $db->getConnection();
+
 if ($conn->connect_error) {
     die("❌ Error de conexión: " . $conn->connect_error);
 }

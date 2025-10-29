@@ -1,0 +1,149 @@
+# 🎮 MundoGamer – Sistema Web de Comunidad Gamer
+
+## 📘 Descripción General
+**MundoGamer** es una plataforma web desarrollada en **PHP, HTML, CSS y MySQL**, diseñada para la gestión integral de una comunidad gamer.  
+El sistema está dividido en dos entornos principales:
+
+- 👤 **Usuario (Cliente Gamer)**
+- 🛠️ **Administrador**
+
+Cada entorno tiene su propio flujo, vistas y permisos, permitiendo una experiencia diferenciada según el tipo de acceso.
+
+---
+
+## ⚙️ Tecnologías Utilizadas
+- PHP 8.2
+- MySQL 5.7+
+- HTML5 / CSS3 / JavaScript
+- Bootstrap 5.3
+- Font Awesome
+- Apache (XAMPP, Laragon u otro servidor local)
+
+---
+
+## 🧩 Estructura del Proyecto
+
+/MundoGamer/
+│
+├── infinity_gamer.php → Página principal del sistema
+├── conexion.php → Conexión general a la base de datos
+├── database.php → Configuración y funciones adicionales de base de datos
+├── interfaces.php → Interfaces de clases DAO
+├── ProductoDAO.php → Manejador de productos
+├── ProveedorDAO.php → Manejador de proveedores
+├── TrabajadorDAO.php → Manejador de trabajadores
+├── UsuarioDAO.php → Manejador de usuarios
+├── ReadOnlyDatabase.php → Control de acceso a datos en modo lectura
+├── composer.json / lock → Dependencias del proyecto
+├── phpunit.xml → Configuración de pruebas unitarias
+├── test.log → Registro de pruebas
+├── test_bd.php / test_excel.xlsx / test_librerias.php → Archivos de pruebas
+│
+├── Admin/
+│ ├── admin-login.php
+│ ├── admin-registrer.php
+│ ├── admin-dashboard.php
+│ ├── admin-almacen.php
+│ ├── admin-clientes.php
+│ ├── admin-proveedores.php
+│ ├── admin-trabajadores.php
+│ ├── admin-mensajes-calificación.php
+│ ├── productos.php
+│ └── logout.php
+│
+└── Usuario/
+├── usuario-login.php
+├── usuario-registrer.php
+├── usuario-index.php
+├── usuario-galeria.php
+├── usuario-carrito.php
+├── usuario-perfil.php
+├── usuario-vip-selección.php
+├── usuario-vip-pago.php
+├── agregar_carrito.php
+├── eliminar_carrito.php
+├── actualizar_carrito.php
+├── procesar_compra.php
+├── guardar_calificacion.php
+├── ayuda_cliente.php
+├── enviar_ayuda.php
+├── logout_usuario.php
+└── voucher.php
+
+---
+
+## 👤 Manual del Usuario
+
+### 🪪 1. Registro
+1. Acceder a `usuario-registrer.php`.
+2. Completar los campos solicitados: nombre, correo, usuario y contraseña.
+3. Presionar **“Registrarse”**.
+4. Si los datos son válidos, el sistema mostrará un mensaje de confirmación y permitirá iniciar sesión.
+
+### 🔐 2. Iniciar Sesión
+- Ingresar a `usuario-login.php`.
+- Escribir usuario y contraseña registrados.
+- Tras la validación, se redirige automáticamente a `usuario-index.php`.
+
+### 🛍️ 3. Funciones Principales
+- **Ver catálogo de juegos:** `usuario-galeria.php`
+- **Agregar productos al carrito:** `usuario-carrito.php`
+- **Actualizar o eliminar productos:** desde el mismo carrito.
+- **Realizar compra:** mediante `procesar_compra.php`, generando el comprobante (`voucher.php`).
+- **Revisar perfil:** `usuario-perfil.php` permite modificar datos personales.
+- **Planes VIP:** seleccionar y pagar membresía en `usuario-vip-selección.php` y `usuario-vip-pago.php`.
+- **Calificaciones y comentarios:** mediante `guardar_calificacion.php`.
+- **Soporte y ayuda:** en `ayuda_cliente.php` o `enviar_ayuda.php`.
+- **Cerrar sesión:** con `logout_usuario.php`.
+
+---
+
+## 🛡️ Manual del Administrador
+
+### 🔑 1. Iniciar Sesión
+- Acceder a `admin-login.php`.
+- Ingresar credenciales de administrador.
+- Tras la autenticación, se accede al **panel principal (`admin-dashboard.php`)**.
+
+### 🧭 2. Módulos Principales
+- **Dashboard:** resumen de actividad, estadísticas y accesos rápidos.
+- **Gestión de productos:** `admin-almacen.php`  
+  Permite agregar, editar o eliminar artículos.
+- **Gestión de proveedores:** `admin-proveedores.php`  
+  Administración de empresas proveedoras y contactos.
+- **Gestión de trabajadores:** `admin-trabajadores.php`  
+  Registro y control de personal del sistema.
+- **Gestión de clientes:** `admin-clientes.php`  
+  Visualiza, bloquea o elimina usuarios registrados.
+- **Mensajes y calificaciones:** `admin-mensajes-calificación.php`  
+  Respuesta a dudas, reclamos o reseñas enviadas por usuarios.
+
+### 🔒 3. Seguridad
+- Autenticación por sesiones PHP.
+- Control de intentos fallidos (bloqueo temporal).
+- Cierre de sesión mediante `logout.php`.
+- Acceso restringido a carpetas administrativas.
+
+---
+
+## 🧠 Recomendaciones Generales
+- Modificar contraseñas por defecto tras la instalación.
+- No compartir ni publicar `conexion.php` ni `database.php` (contienen credenciales).
+- Realizar copias de seguridad periódicas de la base de datos.
+- Usar HTTPS en entornos de producción.
+- Verificar permisos de escritura solo en carpetas necesarias (por ejemplo, para carga de imágenes o logs).
+
+---
+
+## 🧾 Créditos
+**Desarrollado por el equipo Infinity Gamer Developers (2025):**
+
+- 🧑‍💻 **Fernando Antonio Gutierrez Sernaque** – CEO & Fundador  
+- 🧠 **Angel Fabrizio Medina** – Director de Tecnología  
+- 🎨 **Wilson Esteban Vásquez** – Diseñador UX/UI  
+- 🔐 **Jhon Arnold Saavedra** – Especialista en Seguridad  
+
+© 2025 – Todos los derechos reservados.  
+**MundoGamer** – Sistema Web para la comunidad gamer.
+
+---
