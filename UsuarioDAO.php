@@ -36,6 +36,23 @@ class UsuarioDAO implements Exportable {
         return $stmt->execute();
     }
 
+    // 🔹 NUEVO: Método para login funcional
+    public function verificarUsuario($username, $password) {
+        $stmt = $this->conn->prepare("SELECT * FROM usuarios WHERE username = ?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows === 1) {
+            $usuario = $result->fetch_assoc();
+            // Verifica hash o texto plano
+            if (password_verify($password, $usuario['password']) || $usuario['password'] === $password) {
+                return $usuario; // Retorna los datos del usuario si es válido
+            }
+        }
+        return false; // Usuario no encontrado o contraseña incorrecta
+    }
+
     public function exportToExcel($data, $filename) {
         file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
     }

@@ -1,5 +1,8 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php';
+verificarUsuario("usuario");
 include 'conexion.php';
 
 // Evitar errores visibles en salida JSON
@@ -121,7 +124,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           <li class="nav-item"><a class="nav-link" href="usuario-index.php">Inicio</a></li>
           <li class="nav-item"><a class="nav-link" href="usuario-galeria.php">Galería</a></li>
           <li class="nav-item"><a class="nav-link" href="usuario-carrito.php">Carrito</a></li>
-          <li class="nav-item"><a class="nav-link active" href="ayuda-cliente.php">Ayuda</a></li>
+          <li class="nav-item"><a class="nav-link active" href="ayuda_cliente.php">Ayuda</a></li>
         </ul>
       </div>
     </div>

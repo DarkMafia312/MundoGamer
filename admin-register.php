@@ -1,4 +1,13 @@
-<?php include('conexion.php'); ?>
+<?php
+require_once __DIR__ . '/sentry.php';
+session_start();
+include('conexion.php');
+
+// Generar token CSRF
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -59,15 +68,22 @@ h2 {
 </style>
 </head>
 <body>
+
 <div class="register-container">
   <h2><i class="fas fa-user-shield"></i> Registro de Administrador</h2>
+
   <form id="adminRegisterForm" method="POST">
+
+    <!-- CSRF -->
+    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+
     <input type="text" name="nombre" class="form-control mb-3" placeholder="Nombre" required>
     <input type="text" name="apellido" class="form-control mb-3" placeholder="Apellido" required>
     <input type="text" name="usuario" class="form-control mb-3" placeholder="Usuario" required>
     <input type="email" name="correo" class="form-control mb-3" placeholder="Correo" required>
     <input type="tel" name="telefono" class="form-control mb-3" placeholder="Teléfono" required>
     <input type="password" name="contrasena" class="form-control mb-3" placeholder="Contraseña" required>
+
     <button type="submit" class="btn btn-gamer w-100"><i class="fas fa-user-plus"></i> Registrar</button>
     <a href="admin-login.php" class="btn btn-secondary mt-2 w-100">Ya tengo cuenta</a>
   </form>
@@ -75,17 +91,65 @@ h2 {
 
 <?php
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $nombre = $_POST['nombre'];
-    $apellido = $_POST['apellido'];
-    $usuario = $_POST['usuario'];
-    $correo = $_POST['correo'];
-    $telefono = $_POST['telefono'];
-    $contrasena = password_hash($_POST['contrasena'], PASSWORD_DEFAULT);
 
+    // Validación CSRF
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("<script>
+            Swal.fire('Error de seguridad', 'Token CSRF inválido', 'error');
+        </script>");
+    }
+
+    // Sanitización básica
+    $nombre     = trim($_POST['nombre']);
+    $apellido   = trim($_POST['apellido']);
+    $usuario    = trim($_POST['usuario']);
+    $correo     = trim($_POST['correo']);
+    $telefono   = trim($_POST['telefono']);
+    $contrasena = $_POST['contrasena'];
+
+    // Validaciones backend
+    if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+        echo "<script>Swal.fire('Correo inválido', 'Ingrese un correo válido', 'error');</script>";
+        exit();
+    }
+
+    if (!preg_match("/^[0-9]{6,12}$/", $telefono)) {
+        echo "<script>Swal.fire('Teléfono inválido', 'Debe contener solo números (6-12 dígitos)', 'error');</script>";
+        exit();
+    }
+
+    if (strlen($contrasena) < 6) {
+        echo "<script>Swal.fire('Contraseña corta', 'Debe tener al menos 6 caracteres', 'error');</script>";
+        exit();
+    }
+
+    // Verificar usuario o correo existente
+    $check = $conn->prepare("SELECT id_admin FROM administradores WHERE usuario_admin = ? OR correo = ?");
+    $check->bind_param("ss", $usuario, $correo);
+    $check->execute();
+    $res = $check->get_result();
+
+    if ($res->num_rows > 0) {
+        echo "<script>
+            Swal.fire({
+                icon:'error',
+                title:'Datos duplicados',
+                text:'El usuario o correo ya están registrados.'
+            });
+        </script>";
+        exit();
+    }
+
+    $check->close();
+
+    // Hash seguro
+    $hash = password_hash($contrasena, PASSWORD_DEFAULT);
+
+    // Insertar datos
     $sql = "INSERT INTO administradores (nombre, apellido, usuario_admin, correo, telefono, contrasena)
             VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssssss", $nombre, $apellido, $usuario, $correo, $telefono, $contrasena);
+    $stmt->bind_param("ssssss", $nombre, $apellido, $usuario, $correo, $telefono, $hash);
 
     if ($stmt->execute()) {
         echo "<script>
@@ -106,6 +170,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             });
         </script>";
     }
+
+    $stmt->close();
 }
 ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

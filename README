@@ -1,0 +1,108 @@
+🚀 Informe Final del Proyecto: Automatización de Backup y Contingencia de MundoGamer
+
+📅 Fecha de Finalización: 05 / Diciembre / 2025
+👨‍💻 Encargado: Administrador del Sistema (Servi)
+
+1. 🎯 Objetivo General del Proyecto
+
+Implementar un Plan de Contingencia y Mantenimiento Preventivo automatizado para la base de datos mundogamer_db (alojada en XAMPP/Windows), garantizando la Continuidad del Negocio (Disaster Recovery - DR) mediante:
+
+📀 Backup diario local automático
+
+🔐 Transferencia de contingencia vía SFTP hacia el servidor remoto
+VM AlmaLinux – IP: 192.168.114.126
+
+2. 📂 Artefactos Generados
+
+Los siguientes elementos conforman la solución final:
+
+Artefacto	Descripción
+backup_mundogamer.ps1	Script PowerShell principal para exportación y transferencia.
+sftp_commands.txt	Archivo temporal generado automáticamente con instrucciones para WinSCP.
+Tarea Programada (Windows Task Scheduler)	Ejecución diaria del proceso completo.
+3. 🛠️ Desafíos Técnicos y Soluciones Implementadas
+
+A continuación se describe el cómo se construyó la solución, los problemas encontrados y las decisiones tomadas.
+
+🔹 A. Ejecución de Scripts (Execution Policy)
+
+Desafío:
+PowerShell bloqueaba la ejecución del script por políticas de seguridad.
+
+Solución:
+Uso de ExecutionPolicy Bypass dentro del Programador de Tareas:
+
+powershell.exe -ExecutionPolicy Bypass -File C:\Scripts\backup_mundogamer.ps1
+
+🔹 B. Manejo de Contraseñas con Caracteres Especiales
+
+Desafío crítico:
+La contraseña MiJuego2025! contenía !, causando fallos en mysqldump.
+
+Solución:
+Uso de un Array de Argumentos para evitar el escape involuntario de caracteres:
+
+# Definición de argumentos como array para manejar caracteres especiales
+$dumpArgs = @(
+    "--user=$DB_USER";
+    "--password=$DB_PASS";
+    "--port=$DB_PORT";
+    $DB_NAME;
+    "-r";
+    $BACKUP_PATH
+)
+
+# Ejecución del comando
+& "C:\xampp\mysql\bin\mysqldump.exe" $dumpArgs
+
+🔹 C. Transferencia de Contingencia SFTP (WinSCP)
+
+Desafío:
+Ruta incorrecta de WinSCP.com y necesidad de ejecución 100% desatendida.
+
+Solución:
+Corrección de ruta + uso de archivo temporal de comandos:
+
+# Ruta y parámetros
+$WINSCP_PATH = "C:\Program Files (x86)\WinSCP\WinSCP.com"
+$SERVER_IP   = "192.168.114.126"
+$SFTP_USER   = "admin_sftp"
+$SFTP_PASS   = "la_contraseña_guardada"  # Almacenada de forma segura
+
+
+Contenido del sftp_commands.txt:
+
+open sftp://admin_sftp:contraseña@192.168.114.126
+put "C:\Scripts\MundoGamer_Backups\nombre_archivo.sql" /backups/
+exit
+
+
+Ejecución:
+
+& $WINSCP_PATH /script="C:\Scripts\sftp_commands.txt" /log="C:\Scripts\winscp.log"
+
+4. ⚙️ Configuración Final en el Programador de Tareas
+
+La automatización quedó configurada con la siguiente estructura:
+
+Configuración	Valor
+Tarea Programada	MundoGamer - Backup Diario
+Programa/Script	powershell.exe
+Argumentos	-ExecutionPolicy Bypass -File C:\Scripts\backup_mundogamer.ps1
+Iniciar en	C:\Scripts
+Frecuencia	Diario (ej. 22:00 PM)
+Resultado	0x0 (Éxito) — Verificado ✔️
+5. 🏁 Conclusión
+
+El proyecto se completó con éxito.
+El sistema de backup implementado es estable, seguro y automático, resolviendo:
+
+Problemas de ejecución de PowerShell
+
+Manejo correcto de contraseñas con caracteres especiales
+
+Transferencias SFTP automatizadas al servidor AlmaLinux
+
+Garantía de copias de seguridad diarias
+
+La infraestructura actualmente ya realiza respaldos diarios locales y remotos, asegurando protección ante fallos del sistema y continuidad operativa para MundoGamer.

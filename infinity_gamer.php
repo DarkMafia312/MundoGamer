@@ -1,13 +1,37 @@
 <?php
-session_start();
+// ===============================
+// 🔒 SEGURIDAD DEL SISTEMA
+// ===============================
+require_once __DIR__ . '/sentry.php';
+require_once 'security.php';
+
+// Iniciar sesión de forma segura
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Regeneración de ID segura (una sola vez por sesión)
+if (!isset($_SESSION['session_regenerated'])) {
+    session_regenerate_id(true);
+    $_SESSION['session_regenerated'] = true;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Infinity Gamer | MundoGamer</title>
+
+<!-- Fuente -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<!-- Seguridad adicional del navegador -->
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+
 <style>
 * {
     margin: 0;
@@ -257,6 +281,7 @@ footer {
 }
 </style>
 </head>
+
 <body>
 
 <header>
@@ -277,19 +302,19 @@ footer {
 
 <section id="about">
     <h2>Sobre Nosotros</h2>
-    <p>Somos una empresa tecnológica especializada en soluciones para la comunidad gamer. Nuestro ecosistema, <strong>MundoGamer</strong>, integra venta de juegos, soporte técnico, asistencia virtual y gestión empresarial, todo desde una plataforma segura y moderna.</p>
+    <p>Somos una empresa tecnológica especializada en soluciones para la comunidad gamer. Nuestro ecosistema <strong>MundoGamer</strong> integra venta de juegos, soporte técnico, asistencia virtual y gestión empresarial desde una plataforma segura y moderna.</p>
 </section>
 
 <section id="mision">
     <h2>Misión, Visión y Valores</h2>
-    <p><strong>Misión:</strong> Innovar y conectar a los jugadores mediante herramientas inteligentes que mejoren su experiencia digital.</p>
-    <p><strong>Visión:</strong> Ser la plataforma gamer líder en Latinoamérica, impulsando una comunidad unida por la tecnología y la creatividad.</p>
+    <p><strong>Misión:</strong> Innovar y conectar jugadores mediante herramientas inteligentes.</p>
+    <p><strong>Visión:</strong> Ser la plataforma gamer líder de Latinoamérica.</p>
 
     <div class="valores-list">
-        <div class="valor"><h3>🎯 Innovación</h3><p>Buscamos siempre nuevas formas de mejorar la experiencia gamer.</p></div>
-        <div class="valor"><h3>🤝 Comunidad</h3><p>Creemos en el poder de los jugadores para construir juntos.</p></div>
-        <div class="valor"><h3>💡 Creatividad</h3><p>Nos impulsa la imaginación para romper los límites del entretenimiento.</p></div>
-        <div class="valor"><h3>⚙️ Tecnología</h3><p>Desarrollamos soluciones inteligentes y escalables.</p></div>
+        <div class="valor"><h3>🎯 Innovación</h3><p>Siempre mejorando la experiencia gamer.</p></div>
+        <div class="valor"><h3>🤝 Comunidad</h3><p>Fortalecemos la unión gamer.</p></div>
+        <div class="valor"><h3>💡 Creatividad</h3><p>Impulsamos ideas únicas y energéticas.</p></div>
+        <div class="valor"><h3>⚙️ Tecnología</h3><p>Desarrollamos sistemas sólidos y escalables.</p></div>
     </div>
 </section>
 
@@ -319,15 +344,15 @@ footer {
     <h2>Testimonios</h2>
     <div class="testimonios">
         <div class="testimonio">
-            <p>“Infinity Gamer cambió la forma en que administro mis juegos. Todo es más fácil y rápido.”</p>
+            <p>“Infinity Gamer cambió por completo mi experiencia. Es intuitiva y rápida.”</p>
             <h4>— Luis Romero</h4>
         </div>
         <div class="testimonio">
-            <p>“El soporte técnico es excelente. Me ayudaron a recuperar mi cuenta en minutos.”</p>
+            <p>“El soporte técnico es una maravilla. Atención de 10/10.”</p>
             <h4>— Sofía García</h4>
         </div>
         <div class="testimonio">
-            <p>“Una comunidad gamer de verdad, con beneficios reales y un diseño increíble.”</p>
+            <p>“Una comunidad real, con beneficios reales. La mejor plataforma gamer.”</p>
             <h4>— Kevin Torres</h4>
         </div>
     </div>

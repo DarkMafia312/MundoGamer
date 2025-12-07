@@ -4,7 +4,9 @@ include 'conexion.php';
 require_once __DIR__ . '/fpdf/fpdf.php'; // Asegúrate que la carpeta fpdf exista y contenga fpdf.php
 
 if (!isset($_SESSION['usuario'])) {
-    die("⚠️ Acceso no autorizado");
+    $_SESSION['error'] = "⚠️ Acceso no autorizado";
+    header("Location: usuario-login.php");
+    exit();
 }
 
 $idVenta = $_GET['id_venta'] ?? 0; // 🔹 Corregido aquí
@@ -17,8 +19,10 @@ $stmt->execute();
 $venta = $stmt->get_result()->fetch_assoc();
 
 if (!$venta) {
-    die("Venta no encontrada o no pertenece al usuario.");
+    echo "<h2 style='color:red; text-align:center;'>⚠️ Venta no encontrada o no pertenece al usuario.</h2>";
+    exit();
 }
+
 
 // 🔹 Obtener información de pago
 $stmtPago = $conn->prepare("SELECT * FROM pagos WHERE id_venta = ?");

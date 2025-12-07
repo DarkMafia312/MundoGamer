@@ -11,14 +11,14 @@ class UsuarioDAOTest extends TestCase {
 
     public function testAddUsuario(): void {
         $nuevo = [
-            'nombre' => 'Maria Juana',
-            'apellido' => 'Gonzales Casas',
-            'username' => 'Gonza013',
-            'correo' => 'marigoca@gmail.com',
-            'telefono' => '921852633',
-            'fechaNacimiento' => '2000-01-01',
-            'direccion' => 'Av. Trujillo 123',
-            'password' => '1234',
+            'nombre' => 'Juan',
+            'apellido' => 'Pérez',
+            'username' => 'usuario_valido',
+            'correo' => 'juan@gmail.com',
+            'telefono' => '987654321',
+            'fechaNacimiento' => '2000-05-12',
+            'direccion' => 'Av. Siempre Viva 123',
+            'password' => '123456',
             'estado' => 'activo'
         ];
 

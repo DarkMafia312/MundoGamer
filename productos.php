@@ -1,12 +1,32 @@
 <?php
-include('conexion.php');
-require __DIR__ . '/vendor/autoload.php'; // Carga Composer una sola vez al inicio
+// productos.php - integrado con security.php (CSRF, headers, sesiones seguras)
+
+// ---------------------------
+// Seguridad (session, headers, CSRF, helpers)
+// ---------------------------
+require_once __DIR__ . '/sentry.php';
+require_once __DIR__ . '/security.php';
+secure_bootstrap(); // inicia cabeceras y sesión segura
+
+// ---------------------------
+// Conexión y dependencias
+// ---------------------------
+include_once __DIR__ . '/conexion.php';
+require __DIR__ . '/vendor/autoload.php'; // PhpSpreadsheet
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-// ==================== EXPORTAR A EXCEL ====================
+// ---------------------------
+// EXPORTAR A EXCEL (GET) - requiere token CSRF en query para mayor seguridad
+// ---------------------------
 if (isset($_GET['export'])) {
+    $token = $_GET['csrf'] ?? '';
+    if (!$token || !hash_equals($_SESSION['csrf_token'], $token)) {
+        http_response_code(403);
+        die("Acción no autorizada (CSRF).");
+    }
+
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Productos');
@@ -60,26 +80,27 @@ if (isset($_GET['export'])) {
     $writer->save("php://output");
     exit;
 }
-
-// ==================== AJAX HANDLER ====================
-if(isset($_POST['action'])){
+// ---------------------------
+// AJAX HANDLER (POST)
+// ---------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json; charset=utf-8');
     $action = $_POST['action'];
-    header('Content-Type: application/json');
 
-    try{
-        switch($action){
+    try {
+        switch ($action) {
 
-            // LISTAR PROVEEDORES
+            // LISTAR PROVEEDORES (no requiere CSRF - sólo lectura)
             case 'listProveedores':
                 $res = $conn->query("SELECT id, empresa FROM proveedores ORDER BY id ASC");
                 $proveedores = [];
-                while($row = $res->fetch_assoc()){
+                while ($row = $res->fetch_assoc()) {
                     $proveedores[] = $row;
                 }
                 echo json_encode($proveedores);
                 break;
 
-            // LISTAR PRODUCTOS
+            // LISTAR PRODUCTOS (no requiere CSRF - sólo lectura)
             case 'listProductos':
                 $res = $conn->query("
                     SELECT p.*, pr.empresa AS nombre_proveedor
@@ -88,41 +109,83 @@ if(isset($_POST['action'])){
                     ORDER BY p.id_producto ASC
                 ");
                 $productos = [];
-                while($row = $res->fetch_assoc()){
+                while ($row = $res->fetch_assoc()) {
                     $productos[] = $row;
                 }
                 echo json_encode($productos);
                 break;
 
-            // AGREGAR PRODUCTO
+            // AGREGAR PRODUCTO (mutación -> exigir CSRF)
             case 'add':
+                csrf_verify_or_die();
+
+                // sanitizar entradas
+                $titulo = clean_input($_POST['titulo'] ?? '');
+                $genero = clean_input($_POST['genero'] ?? '');
+                $id_proveedor = (int)($_POST['id_proveedor'] ?? 0);
+                $descripcion = clean_input($_POST['descripcion'] ?? '');
+                $precio = is_numeric($_POST['precio'] ?? null) ? (float)$_POST['precio'] : 0.0;
+                $plataforma = clean_input($_POST['plataforma'] ?? '');
+                $fecha_lanzamiento = clean_input($_POST['fecha_lanzamiento'] ?? null);
+                $rating_promedio = is_numeric($_POST['rating_promedio'] ?? null) ? (float)$_POST['rating_promedio'] : 0.0;
+                $imagen = clean_input($_POST['imagen'] ?? '');
+                $estado = clean_input($_POST['estado'] ?? 'activo');
+                $vip = isset($_POST['vip']) && (int)$_POST['vip'] === 1 ? 1 : 0;
+
                 $stmt = $conn->prepare("
                     INSERT INTO productos
                     (titulo, genero, id_proveedor, descripcion, precio, plataforma, fecha_lanzamiento, rating_promedio, imagen, estado, vip, fecha_creacion)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ");
-                $vip = isset($_POST['vip']) && $_POST['vip'] == '1' ? 1 : 0;
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+
+                // types: s s i s d s s d s s i  => 'ssisdssdssi'
+                $types = 'ssisdssdssi';
                 $stmt->bind_param(
-                    "ssisdssdssi",
-                    $_POST['titulo'],
-                    $_POST['genero'],
-                    $_POST['id_proveedor'],
-                    $_POST['descripcion'],
-                    $_POST['precio'],
-                    $_POST['plataforma'],
-                    $_POST['fecha_lanzamiento'],
-                    $_POST['rating_promedio'],
-                    $_POST['imagen'],
-                    $_POST['estado'],
+                    $types,
+                    $titulo,
+                    $genero,
+                    $id_proveedor,
+                    $descripcion,
+                    $precio,
+                    $plataforma,
+                    $fecha_lanzamiento,
+                    $rating_promedio,
+                    $imagen,
+                    $estado,
                     $vip
                 );
-                $stmt->execute();
-                echo json_encode(['status'=>'success']);
+
+                if (!$stmt->execute()) {
+                    throw new Exception("Execute failed: " . $stmt->error);
+                }
+                $stmt->close();
+
+                echo json_encode(['status' => 'success']);
                 break;
 
-            // EDITAR PRODUCTO
+            // EDITAR PRODUCTO (mutación -> exigir CSRF)
             case 'edit':
-                $vip = isset($_POST['vip']) && $_POST['vip'] == '1' ? 1 : 0;
+                csrf_verify_or_die();
+
+                // sanitizar
+                $id_producto = (int)($_POST['id_producto'] ?? 0);
+                if ($id_producto <= 0) {
+                    throw new Exception("ID inválido");
+                }
+                $titulo = clean_input($_POST['titulo'] ?? '');
+                $genero = clean_input($_POST['genero'] ?? '');
+                $id_proveedor = (int)($_POST['id_proveedor'] ?? 0);
+                $descripcion = clean_input($_POST['descripcion'] ?? '');
+                $precio = is_numeric($_POST['precio'] ?? null) ? (float)$_POST['precio'] : 0.0;
+                $plataforma = clean_input($_POST['plataforma'] ?? '');
+                $fecha_lanzamiento = clean_input($_POST['fecha_lanzamiento'] ?? null);
+                $rating_promedio = is_numeric($_POST['rating_promedio'] ?? null) ? (float)$_POST['rating_promedio'] : 0.0;
+                $imagen = clean_input($_POST['imagen'] ?? '');
+                $estado = clean_input($_POST['estado'] ?? 'activo');
+                $vip = isset($_POST['vip']) && (int)$_POST['vip'] === 1 ? 1 : 0;
 
                 $stmt = $conn->prepare("
                     UPDATE productos SET
@@ -132,53 +195,85 @@ if(isset($_POST['action'])){
                         imagen=?, estado=?, vip=?
                     WHERE id_producto=?
                 ");
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+
+                // types: s s i s d s s d s s i i  => 'ssisdssdssii'
+                $types = 'ssisdssdssii';
                 $stmt->bind_param(
-                    "ssisdssdssii",
-                    $_POST['titulo'],
-                    $_POST['genero'],
-                    $_POST['id_proveedor'],
-                    $_POST['descripcion'],
-                    $_POST['precio'],
-                    $_POST['plataforma'],
-                    $_POST['fecha_lanzamiento'],
-                    $_POST['rating_promedio'],
-                    $_POST['imagen'],
-                    $_POST['estado'],
+                    $types,
+                    $titulo,
+                    $genero,
+                    $id_proveedor,
+                    $descripcion,
+                    $precio,
+                    $plataforma,
+                    $fecha_lanzamiento,
+                    $rating_promedio,
+                    $imagen,
+                    $estado,
                     $vip,
-                    $_POST['id_producto']
+                    $id_producto
                 );
-                $stmt->execute();
-                echo json_encode(['status'=>'success']);
+
+                if (!$stmt->execute()) {
+                    throw new Exception("Execute failed: " . $stmt->error);
+                }
+                $stmt->close();
+
+                echo json_encode(['status' => 'success']);
                 break;
 
-            // ELIMINAR PRODUCTO
+            // ELIMINAR PRODUCTO (mutación -> exigir CSRF)
             case 'delete':
+                csrf_verify_or_die();
+
+                $id_producto = (int)($_POST['id_producto'] ?? 0);
+                if ($id_producto <= 0) {
+                    throw new Exception("ID inválido");
+                }
+
                 $stmt = $conn->prepare("DELETE FROM productos WHERE id_producto=?");
-                $stmt->bind_param("i", $_POST['id_producto']);
-                $stmt->execute();
-                echo json_encode(['status'=>'success']);
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+                $stmt->bind_param("i", $id_producto);
+                if (!$stmt->execute()) {
+                    throw new Exception("Execute failed: " . $stmt->error);
+                }
+                $stmt->close();
+
+                echo json_encode(['status' => 'success']);
                 break;
 
             default:
-                echo json_encode(['status'=>'error','message'=>'Acción no válida']);
+                echo json_encode(['status' => 'error', 'message' => 'Acción no válida']);
+                break;
         }
-    }catch(Exception $e){
-        echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+    } catch (Exception $e) {
+        // log en servidor, enviar mensaje general al cliente
+        error_log("productos.php AJAX error: " . $e->getMessage());
+        echo json_encode(['status' => 'error', 'message' => 'Ocurrió un error.']);
     }
     exit;
 }
-?>
 
+// ---------------------------
+// Si llegamos aquí: render HTML
+// ---------------------------
+$csrf_token_for_js = htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES);
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gestión de Productos</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-
 <style>
+/* Mantén tus estilos originales — los dejé intactos para que no cambie el diseño */
 body {
   background: linear-gradient(135deg, #2c003e, #0d1b2a);
   color: #fff;
@@ -201,84 +296,21 @@ h2 {
   border-radius: 15px;
   box-shadow: 0 0 20px rgba(228,63,90,0.5);
 }
-.table th {
-  background-color: rgba(228,63,90,0.4);
-}
-.btn-custom {
-  background-color: #e43f5a;
-  color: #fff;
-  border: none;
-}
-.btn-custom:hover {
-  background-color: #ff4d6d;
-}
-.btn-secondary {
-  background-color: #0d1b2a;
-  border: none;
-}
-.estado-activo { color: #4caf50; font-weight: bold; }
-.estado-descontinuado { color: #f44336; font-weight: bold; }
-.vip-icon { color: gold; margin-left: 6px; font-size: 1rem; vertical-align: middle; }
-
-/* Labels y checkbox label */
-label.form-label,
-.form-check-label {
-  color: #fff; /* blanco */
-}
-
-/* Placeholders de inputs y textarea */
-input::placeholder,
-textarea::placeholder {
-  color: #fff; /* blanco */
-}
-
-/* Select opciones */
-select option {
-  color: #000; /* negro para opciones */
-}
-
-/* Texto que escribe el usuario */
-input,
-textarea,
-select {
-  color: #000; /* negro para lo que se escribe */
-  background-color: rgba(255,255,255,0.9); /* opcional: fondo claro para inputs */
-  border: 1px solid #e43f5a;
-  border-radius: 5px;
-  padding: 4px 8px;
-}
-
-/* Pantalla de carga */
-#loader {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: #0d1b2a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-.loader-spinner {
-  border: 8px solid #1a273d;
-  border-top: 8px solid #e43f5a;
-  border-radius: 50%;
-  width: 80px; height: 80px;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.fade-in {
-  animation: fadeIn 0.8s ease-in-out;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+.table th { background-color: rgba(228,63,90,0.4); }
+.btn-custom { background-color: #e43f5a; color: #fff; border: none; }
+.btn-custom:hover { background-color: #ff4d6d; }
+.btn-secondary { background-color: #0d1b2a; border: none; }
+label.form-label, .form-check-label { color: #fff; }
+input::placeholder, textarea::placeholder { color: #fff; }
+select option { color: #000; }
+input, textarea, select { color: #000; background-color: rgba(255,255,255,0.9); border: 1px solid #e43f5a; border-radius: 5px; padding: 4px 8px; }
+#loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1b2a; display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.loader-spinner { border: 8px solid #1a273d; border-top: 8px solid #e43f5a; border-radius: 50%; width: 80px; height: 80px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.fade-in { animation: fadeIn 0.8s ease-in-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 </head>
-
 <body>
 <div id="loader"><div class="loader-spinner"></div></div>
 
@@ -292,6 +324,7 @@ select {
   </div>
 
   <div class="card p-4 mb-4">
+    <!-- Formulario (el CSRF se maneja en JS para AJAX) -->
     <form id="productForm" autocomplete="off">
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label">Título</label><input type="text" id="titulo" class="form-control" required></div>
@@ -317,7 +350,7 @@ select {
   </div>
 
 <div class="text-end mb-3">
-  <a href="productos.php?export=1" class="btn btn-success">
+  <a href="productos.php?export=1&csrf=<?= urlencode($csrf_token_for_js) ?>" class="btn btn-success">
     <i class="fa-solid fa-file-excel"></i> Exportar a Excel
   </a>
 </div>
@@ -337,16 +370,27 @@ select {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const loader=document.getElementById('loader'),mainContent=document.getElementById('mainContent');
-const form=document.getElementById('productForm'),cancelBtn=document.getElementById('cancelBtn'),productList=document.getElementById('productList');
+// CSRF token proporcionado por PHP
+const CSRF_TOKEN = '<?= $csrf_token_for_js ?>';
+
+const loader=document.getElementById('loader'), mainContent=document.getElementById('mainContent');
+const form=document.getElementById('productForm'), cancelBtn=document.getElementById('cancelBtn'), productList=document.getElementById('productList');
 let editIndex=null;
 
 function ajaxPromise(data){
   return new Promise((resolve,reject)=>{
+    // adjuntar CSRF siempre
+    data.csrf_token = CSRF_TOKEN;
     const xhr=new XMLHttpRequest();
     xhr.open('POST','productos.php',true);
     xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-    xhr.onload=()=>{try{resolve(JSON.parse(xhr.responseText));}catch(e){reject(e);} };
+    xhr.onload=()=>{
+      try{
+        resolve(JSON.parse(xhr.responseText));
+      }catch(e){
+        reject(new Error('Respuesta inválida: '+xhr.responseText));
+      }
+    };
     xhr.onerror=()=>reject(new Error('Error de red'));
     xhr.send(Object.keys(data).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(data[k])).join('&'));
   });
@@ -354,9 +398,19 @@ function ajaxPromise(data){
 
 async function loadProveedores(){
   const sel=document.getElementById('id_proveedor');
-  const res=await ajaxPromise({action:'listProveedores'});
-  sel.innerHTML='<option value="">Seleccione</option>';
-  res.forEach(p=>{sel.innerHTML+=`<option value="${p.id}">${p.empresa}</option>`});
+  try{
+    const res = await ajaxPromise({action:'listProveedores'});
+    sel.innerHTML='<option value="">Seleccione</option>';
+    res.forEach(p=>{ sel.innerHTML += `<option value="${p.id}">${p.empresa}</option>`; });
+  }catch(e){
+    console.error(e);
+    sel.innerHTML='<option value="">Error cargando</option>';
+  }
+}
+
+function escapeHtml(unsafe) {
+  if (unsafe === null || unsafe === undefined) return '';
+  return String(unsafe).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 }
 
 function loadProductos(){
@@ -366,15 +420,15 @@ function loadProductos(){
       tbody.innerHTML+=`
       <tr>
         <td>${p.id_producto}</td>
-        <td><img src="${p.imagen||'https://via.placeholder.com/60x40'}" width="60" class="rounded"></td>
-        <td>${p.titulo} ${p.vip==1?'<i class="fa-solid fa-crown text-warning"></i>':''}</td>
-        <td>${p.genero}</td>
-        <td>${p.nombre_proveedor||'-'}</td>
+        <td><img src="${escapeHtml(p.imagen||'https://via.placeholder.com/60x40')}" width="60" class="rounded"></td>
+        <td>${escapeHtml(p.titulo)} ${p.vip==1?'<i class="fa-solid fa-crown text-warning"></i>':''}</td>
+        <td>${escapeHtml(p.genero)}</td>
+        <td>${escapeHtml(p.nombre_proveedor||'-')}</td>
         <td>$${parseFloat(p.precio).toFixed(2)}</td>
-        <td>${p.plataforma}</td>
-        <td>${p.fecha_lanzamiento}</td>
-        <td>${p.rating_promedio}</td>
-        <td class="${p.estado==='activo'?'text-success':'text-danger'}">${p.estado}</td>
+        <td>${escapeHtml(p.plataforma)}</td>
+        <td>${escapeHtml(p.fecha_lanzamiento)}</td>
+        <td>${escapeHtml(p.rating_promedio)}</td>
+        <td class="${p.estado==='activo'?'text-success':'text-danger'}">${escapeHtml(p.estado)}</td>
         <td>${p.vip==1?'Sí':'No'}</td>
         <td>
           <button class="btn btn-warning btn-sm" onclick="editProd(${p.id_producto})"><i class="fa-solid fa-pen"></i></button>
@@ -382,44 +436,79 @@ function loadProductos(){
         </td>
       </tr>`;
     });
-  });
+  }).catch(err=>{ console.error(err); alert('Error cargando productos'); });
 }
 
 form.addEventListener('submit',e=>{
   e.preventDefault();
-  const d={
-    titulo:titulo.value,genero:genero.value,id_proveedor:id_proveedor.value,descripcion:descripcion.value,
-    precio:precio.value,plataforma:plataforma.value,fecha_lanzamiento:fecha_lanzamiento.value,
-    rating_promedio:rating_promedio.value,imagen:imagen.value,estado:estado.value,vip:vip.checked?1:0
+  const d = {
+    titulo: document.getElementById('titulo').value,
+    genero: document.getElementById('genero').value,
+    id_proveedor: document.getElementById('id_proveedor').value,
+    descripcion: document.getElementById('descripcion').value,
+    precio: document.getElementById('precio').value,
+    plataforma: document.getElementById('plataforma').value,
+    fecha_lanzamiento: document.getElementById('fecha_lanzamiento').value,
+    rating_promedio: document.getElementById('rating_promedio').value,
+    imagen: document.getElementById('imagen').value,
+    estado: document.getElementById('estado').value,
+    vip: document.getElementById('vip').checked?1:0
   };
-  if(editIndex){d.action='edit';d.id_producto=editIndex;}else{d.action='add';}
+  if(editIndex){ d.action='edit'; d.id_producto = editIndex; } else { d.action='add'; }
+
   ajaxPromise(d).then(r=>{
-    loadProductos();form.reset();editIndex=null;cancelBtn.style.display='none';
+    if(r && r.status === 'success'){
+      loadProductos();
+      form.reset();
+      editIndex=null;
+      cancelBtn.style.display='none';
+    } else {
+      console.error(r);
+      alert('Error: ' + (r.message || 'Operación fallida'));
+    }
+  }).catch(err=>{
+    console.error(err);
+    alert('Error de red o respuesta inválida');
   });
 });
 
 function editProd(id){
+  // cargamos lista y buscamos el producto (podríamos implementar endpoint específico si lo prefieres)
   ajaxPromise({action:'listProductos'}).then(res=>{
-    const p=res.find(x=>x.id_producto==id);
+    const p = res.find(x=>x.id_producto == id);
     if(p){
-      titulo.value=p.titulo;genero.value=p.genero;id_proveedor.value=p.id_proveedor;
-      descripcion.value=p.descripcion;precio.value=p.precio;plataforma.value=p.plataforma;
-      fecha_lanzamiento.value=p.fecha_lanzamiento;rating_promedio.value=p.rating_promedio;
-      imagen.value=p.imagen;estado.value=p.estado;vip.checked=p.vip==1;
-      editIndex=id;cancelBtn.style.display='inline-block';
+      document.getElementById('titulo').value = p.titulo;
+      document.getElementById('genero').value = p.genero;
+      document.getElementById('id_proveedor').value = p.id_proveedor;
+      document.getElementById('descripcion').value = p.descripcion;
+      document.getElementById('precio').value = p.precio;
+      document.getElementById('plataforma').value = p.plataforma;
+      document.getElementById('fecha_lanzamiento').value = p.fecha_lanzamiento;
+      document.getElementById('rating_promedio').value = p.rating_promedio;
+      document.getElementById('imagen').value = p.imagen;
+      document.getElementById('estado').value = p.estado;
+      document.getElementById('vip').checked = p.vip == 1;
+      editIndex = id;
+      cancelBtn.style.display = 'inline-block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      alert('Producto no encontrado');
     }
   });
 }
 
 function deleteProd(id){
   if(confirm('¿Eliminar producto?')){
-    ajaxPromise({action:'delete',id_producto:id}).then(()=>loadProductos());
+    ajaxPromise({action:'delete', id_producto: id}).then(r=>{
+      if(r && r.status === 'success') loadProductos();
+      else alert('No se pudo eliminar');
+    }).catch(err=>{ console.error(err); alert('Error al eliminar'); });
   }
 }
 
-cancelBtn.onclick=()=>{form.reset();editIndex=null;cancelBtn.style.display='none';};
+cancelBtn.onclick = ()=>{ form.reset(); editIndex = null; cancelBtn.style.display = 'none'; };
 
-window.onload=async()=>{loader.style.display='none';mainContent.style.display='block';await loadProveedores();loadProductos();};
+window.onload = async ()=>{ loader.style.display = 'none'; mainContent.style.display = 'block'; await loadProveedores(); loadProductos(); };
 </script>
 </body>
 </html>

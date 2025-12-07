@@ -1,16 +1,30 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
-include('conexion.php');
+require_once 'conexion.php'; // Usa require_once para evitar inclusiones repetidas
 
+// Verificar sesión activa
 if (!isset($_SESSION['usuario_admin'])) {
     header("Location: admin-login.php");
     exit();
 }
 
-$usuario = $_SESSION['usuario_admin'];
-$query = "SELECT nombre, apellido FROM administradores WHERE usuario_admin = '$usuario'";
-$result = $conn->query($query);
+// Sanitizar usuario
+$usuario = clean_input($_SESSION['usuario_admin']);
+
+// Consulta preparada
+$stmt = $conn->prepare("SELECT nombre, apellido FROM administradores WHERE usuario_admin = ?");
+$stmt->bind_param("s", $usuario);
+$stmt->execute();
+$result = $stmt->get_result();
 $admin = $result->fetch_assoc();
+
+if (!$admin) {
+    // Si no existe el admin, cerrar sesión por seguridad
+    session_destroy();
+    header("Location: admin-login.php?error=notfound");
+    exit();
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -18,13 +32,16 @@ $admin = $result->fetch_assoc();
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Administrador</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+
+  <!-- Bootstrap & Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+
   <style>
+    /* Loader */
     #loader {
       position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      inset: 0;
       background: #0d0d0d;
       display: flex;
       justify-content: center;
@@ -41,28 +58,23 @@ $admin = $result->fetch_assoc();
       animation: spin 1s linear infinite, glow 1.5s infinite alternate;
     }
 
-    @keyframes spin {
-      100% { transform: rotate(360deg); }
-    }
-
+    @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes glow {
       from { box-shadow: 0 0 10px #00f5ff; }
       to { box-shadow: 0 0 30px #00ffcc; }
     }
 
+    /* Body */
     body {
       background: linear-gradient(135deg, #0d0d0d, #1c1c1c, #111);
       color: #fff;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Segoe UI', sans-serif;
       min-height: 100vh;
       padding: 30px;
       opacity: 0;
       transition: opacity 0.5s ease-in-out;
     }
-
-    body.loaded {
-      opacity: 1;
-    }
+    body.loaded { opacity: 1; }
 
     h1 {
       text-align: center;
@@ -70,6 +82,11 @@ $admin = $result->fetch_assoc();
       text-shadow: 0 0 10px rgba(0, 245, 255, 0.6);
       margin-bottom: 40px;
       animation: glowText 2s infinite alternate;
+    }
+
+    @keyframes glowText {
+      from { text-shadow: 0 0 10px #00f5ff; }
+      to { text-shadow: 0 0 25px #00ffcc; }
     }
 
     .bienvenida {
@@ -85,6 +102,7 @@ $admin = $result->fetch_assoc();
       to { opacity: 1; transform: translateY(0); }
     }
 
+    /* Cards */
     .card-custom {
       background: #1a1a1a;
       border: 1px solid rgba(0, 255, 255, 0.2);
@@ -92,7 +110,7 @@ $admin = $result->fetch_assoc();
       padding: 25px;
       text-align: center;
       box-shadow: 0px 0px 15px rgba(0, 245, 255, 0.15);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      transition: transform 0.3s, box-shadow 0.3s;
     }
 
     .card-custom:hover {
@@ -101,22 +119,16 @@ $admin = $result->fetch_assoc();
       border-color: rgba(0, 245, 255, 0.6);
     }
 
-    .card-custom h3 {
-      margin-top: 10px;
-      margin-bottom: 15px;
-      color: #00ffcc;
-    }
-
+    .card-custom h3 { color: #00ffcc; }
     .card-custom i {
       font-size: 2.5rem;
-      margin-bottom: 10px;
       color: #00f5ff;
-      text-shadow: 0 0 10px rgba(0,245,255,0.6);
+      text-shadow: 0 0 10px rgba(0, 245, 255, 0.6);
     }
 
     .card-custom a {
       text-decoration: none;
-      color: #fff;
+      color: #000;
       font-weight: bold;
       padding: 10px 15px;
       background: linear-gradient(90deg, #00f5ff, #00ffcc);
@@ -127,10 +139,10 @@ $admin = $result->fetch_assoc();
 
     .card-custom a:hover {
       background: linear-gradient(90deg, #00ffcc, #00f5ff);
-      color: #000;
       box-shadow: 0 0 10px rgba(0, 245, 255, 0.8);
     }
 
+    /* Botón Cerrar Sesión */
     .logout-btn {
       position: absolute;
       top: 20px;
@@ -142,6 +154,7 @@ $admin = $result->fetch_assoc();
       border-radius: 8px;
       font-weight: bold;
       transition: 0.3s;
+      cursor: pointer;
     }
 
     .logout-btn:hover {
@@ -149,93 +162,64 @@ $admin = $result->fetch_assoc();
       transform: scale(1.05);
       box-shadow: 0 0 15px rgba(255, 77, 77, 0.7);
     }
-
-    @keyframes glowText {
-      from { text-shadow: 0 0 10px #00f5ff, 0 0 20px #00f5ff; }
-      to { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
-    }
   </style>
 </head>
+
 <body>
 
+  <!-- Loader -->
   <div id="loader">
     <div class="spinner"></div>
   </div>
 
+  <!-- Botón cerrar sesión -->
   <button class="logout-btn" onclick="cerrarSesion()">Cerrar Sesión</button>
 
   <h1>Panel de Administración</h1>
-  <p class="bienvenida">👋 Bienvenido, <strong><?= $admin['nombre'] . ' ' . $admin['apellido'] ?></strong></p>
 
+  <p class="bienvenida">
+    👋 Bienvenido, <strong><?= htmlspecialchars($admin['nombre'] . ' ' . $admin['apellido']) ?></strong>
+  </p>
+
+  <!-- Tarjetas del panel -->
   <div class="container">
     <div class="row g-4">
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-people-fill"></i>
-          <h3>Trabajadores</h3>
-          <p>Administra la información de los empleados.</p>
-          <a href="admin-trabajadores.php">Gestionar</a>
-        </div>
-      </div>
 
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-truck"></i>
-          <h3>Proveedores</h3>
-          <p>Gestiona los proveedores y sus contratos.</p>
-          <a href="admin-proveedores.php">Gestionar</a>
-        </div>
-      </div>
+      <?php
+      $cards = [
+        ["bi-people-fill", "Trabajadores", "Administra la información de los empleados.", "admin-trabajadores.php"],
+        ["bi-truck", "Proveedores", "Gestiona los proveedores y sus contratos.", "admin-proveedores.php"],
+        ["bi-box-seam", "Almacén", "Controla los inventarios y productos.", "admin-almacen.php"],
+        ["bi-controller", "Productos", "Agrega, edita o elimina productos.", "productos.php"],
+        ["bi-person-circle", "Usuarios", "Controla la información de los clientes.", "admin-clientes.php"],
+        ["bi-chat-dots", "Mensajes y Calificaciones", "Gestiona mensajes y calificaciones.", "admin-mensajes-calificacion.php"],
+      ];
 
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-box-seam"></i>
-          <h3>Almacén</h3>
-          <p>Controla los inventarios y productos.</p>
-          <a href="admin-almacen.php">Gestionar</a>
+      foreach ($cards as $card): ?>
+        <div class="col-md-4">
+          <div class="card-custom">
+            <i class="bi <?= $card[0] ?>"></i>
+            <h3><?= $card[1] ?></h3>
+            <p><?= $card[2] ?></p>
+            <a href="<?= $card[3] ?>">Gestionar</a>
+          </div>
         </div>
-      </div>
+      <?php endforeach; ?>
 
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-controller"></i>
-          <h3>Productos</h3>
-          <p>Agrega, edita o elimina productos del sistema.</p>
-          <a href="productos.php">Gestionar</a>
-        </div>
-      </div>
-
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-person-circle"></i>
-          <h3>Usuarios</h3>
-          <p>Controla la información y estado de los clientes.</p>
-          <a href="admin-clientes.php">Gestionar</a>
-        </div>
-      </div>
-
-      <div class="col-md-4">
-        <div class="card-custom">
-          <i class="bi bi-chat-dots"></i>
-          <h3>Mensajes y Calificaciones</h3>
-          <p>Revisa y gestiona los mensajes y calificaciones de los usuarios.</p>
-          <a href="admin-mensajes-calificacion.php">Gestionar</a>
-        </div>
-      </div>
     </div>
   </div>
 
   <script>
+    // Transición de carga
     window.addEventListener("load", () => {
       document.getElementById("loader").style.display = "none";
       document.body.classList.add("loaded");
     });
 
+    // Cerrar sesión
     function cerrarSesion() {
       fetch("logout.php")
-        .then(() => {
-          window.location.href = "admin-login.php";
-        });
+        .then(() => { window.location.href = "admin-login.php"; });
     }
   </script>
 

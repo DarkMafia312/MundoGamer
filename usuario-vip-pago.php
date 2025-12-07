@@ -1,12 +1,9 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php';
+verificarUsuario("usuario");
 include 'conexion.php';
-
-// Verificar sesión activa
-if (!isset($_SESSION['usuario'])) {
-  header("Location: usuario-login.php");
-  exit();
-}
 
 $usuarioSesion = $_SESSION['usuario'];
 $correoUsuario = is_array($usuarioSesion) ? $usuarioSesion['correo'] : $usuarioSesion;
@@ -22,7 +19,7 @@ $id_usuario = $usuario['id'] ?? null;
 $telefonoUsuario = $usuario['telefono'] ?? '';
 
 if (!$id_usuario) {
-  die("❌ Error: No se encontró el usuario en la base de datos.");
+    throw new Exception("❌ Error: No se encontró el usuario en la base de datos.");
 }
 
 // CIP persistente temporal (mientras la sesión esté activa)

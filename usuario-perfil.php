@@ -1,12 +1,9 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php';
+verificarUsuario("usuario"); // ⬅️ Seguridad correcta para usuarios
 include 'conexion.php';
-
-// ✅ Verificar sesión activa
-if (!isset($_SESSION['usuario'])) {
-    header("Location: usuario-login.php");
-    exit();
-}
 
 $usuarioSesion = $_SESSION['usuario'];
 $idUsuario = $usuarioSesion['id'];
@@ -15,11 +12,13 @@ $tipoMensaje = "";
 
 // ✅ Cancelar membresía VIP con confirmación
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['accion'] === "confirmar_cancelacion_vip") {
+
     $sqlCancelar = "UPDATE usuarios_vip 
                     SET estado='Cancelada', fecha_cancelacion=NOW() 
                     WHERE id_usuario=? AND estado='Activa'";
     $stmt = $conn->prepare($sqlCancelar);
     $stmt->bind_param("i", $idUsuario);
+
     if ($stmt->execute()) {
         $_SESSION['mensaje'] = "❌ Tu membresía VIP ha sido cancelada correctamente.";
         $_SESSION['tipoMensaje'] = "info";
@@ -33,6 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['
 
 // ✅ Guardar cambios del perfil
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['accion'] === "guardar") {
+
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
     $username = trim($_POST['username']);
@@ -47,6 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['
         $_SESSION['mensaje'] = "Las contraseñas nuevas no coinciden.";
         $_SESSION['tipoMensaje'] = "danger";
     } else {
+
         if (!empty($newPassword)) {
             $hashed = password_hash($newPassword, PASSWORD_DEFAULT);
             $sql = "UPDATE usuarios SET nombre=?, apellido=?, username=?, correo=?, telefono=?, fechaNacimiento=?, direccion=?, password=? WHERE id=?";
@@ -84,28 +85,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['
     exit();
 }
 
-// ✅ Obtener mensaje tras redirección
+// Obtener mensaje tras redirección
 if (isset($_SESSION['mensaje'])) {
     $mensaje = $_SESSION['mensaje'];
     $tipoMensaje = $_SESSION['tipoMensaje'];
     unset($_SESSION['mensaje'], $_SESSION['tipoMensaje']);
 }
 
-// ✅ Obtener datos del usuario
+// Obtener datos del usuario
 $sql = "SELECT * FROM usuarios WHERE id=?";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $idUsuario);
 $stmt->execute();
 $usuario = $stmt->get_result()->fetch_assoc();
 
-// ✅ Consultar membresía VIP activa
+// Consultar membresía VIP activa
 $sqlVip = "SELECT * FROM usuarios_vip WHERE id_usuario=? AND estado='Activa' ORDER BY fecha_inicio DESC LIMIT 1";
 $stmtVip = $conn->prepare($sqlVip);
 $stmtVip->bind_param("i", $idUsuario);
 $stmtVip->execute();
 $membresiaActiva = $stmtVip->get_result()->fetch_assoc();
 
-// ✅ Formatear fecha de nacimiento
+// Formatear fecha
 $fechaFormateada = "";
 if (!empty($usuario['fechaNacimiento'])) {
     $fechaBruta = trim($usuario['fechaNacimiento']);
@@ -295,7 +296,7 @@ if (!empty($usuario['fechaNacimiento'])) {
     <a href="usuario-index.php" class="active">Inicio</a>
     <a href="usuario-galeria.php">Galería</a>
     <a href="usuario-carrito.php">Carrito</a>
-    <a href="ayuda-cliente.php">Ayuda</a>
+    <a href="ayuda_cliente.php">Ayuda</a>
   </div>
 </nav>
 

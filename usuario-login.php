@@ -1,33 +1,59 @@
 <?php
-session_start();
+// ===============================
+// 🔒 CONFIGURACIÓN DE SEGURIDAD
+// ===============================
+require_once __DIR__ . '/sentry.php';
+session_start([
+    'cookie_httponly' => true,
+    'cookie_secure'   => isset($_SERVER['HTTPS']),
+    'cookie_samesite' => 'Strict'
+]);
+
 include 'conexion.php';
 
-// --- Inicialización de variables ---
+// Sanitizador seguro
+function limpiar($data) {
+    return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
+}
+
+// CSRF
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+// Inicialización
 $mensaje = "";
 $tipoMensaje = "success";
 
-// Variables de control de intentos y bloqueo
 if (!isset($_SESSION['intentos'])) $_SESSION['intentos'] = 0;
 if (!isset($_SESSION['bloqueado_hasta'])) $_SESSION['bloqueado_hasta'] = 0;
 if (!isset($_SESSION['ciclos_bloqueo'])) $_SESSION['ciclos_bloqueo'] = 0;
 
 $ahora = time();
 
-// 🔒 Verificación si está bloqueado temporalmente
+// Bloqueo temporal
 if ($ahora < $_SESSION['bloqueado_hasta']) {
     $restante = $_SESSION['bloqueado_hasta'] - $ahora;
-    $mensaje = "";
     $tipoMensaje = "danger";
+
 } elseif ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $username = trim(strtolower($_POST['username']));
+
+    // Verificar CSRF
+    if (!isset($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
+        die("⚠️ CSRF Token inválido.");
+    }
+
+    $username = strtolower(limpiar($_POST['username']));
     $password = trim($_POST['password']);
 
     if (empty($username) || empty($password)) {
         $mensaje = "Por favor, completa todos los campos.";
         $tipoMensaje = "danger";
+
     } else {
-        // 🔍 Buscar usuario principal
-        $sql = "SELECT * FROM usuarios WHERE LOWER(username) = ? LIMIT 1";
+        // Buscar usuario
+        $sql = "SELECT id, nombre, apellido, username, correo, password FROM usuarios WHERE LOWER(username) = ? LIMIT 1";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("s", $username);
         $stmt->execute();
@@ -36,11 +62,12 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
         if ($resultado->num_rows > 0) {
             $usuario = $resultado->fetch_assoc();
 
-            // Verificar contraseña
             if (password_verify($password, $usuario['password'])) {
 
-                // 🔎 Buscar su estado en gestion_clientes
-                $sql_estado = "SELECT estado, fecha_suspension_inicio, fecha_suspension_fin FROM gestion_clientes WHERE id_usuario = ? LIMIT 1";
+                // Verificar estado en gestion_clientes
+                $sql_estado = "SELECT estado, fecha_suspension_inicio, fecha_suspension_fin 
+                               FROM gestion_clientes 
+                               WHERE id_usuario = ? LIMIT 1";
                 $stmt_estado = $conn->prepare($sql_estado);
                 $stmt_estado->bind_param("i", $usuario['id']);
                 $stmt_estado->execute();
@@ -51,18 +78,22 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
                 $inicio_susp = $estado_data['fecha_suspension_inicio'] ?? null;
                 $fin_susp = $estado_data['fecha_suspension_fin'] ?? null;
 
-                // --- Verificar estado ---
+                // Revisar estado
                 if ($estado === 'Baneado') {
-                    $mensaje = "⛔ Tu cuenta ha sido baneada. No puedes acceder al sistema.";
+                    $mensaje = "⛔ Tu cuenta ha sido baneada.";
                     $tipoMensaje = "danger";
+
                 } elseif ($estado === 'Suspendido') {
-                    $mensaje = "⚠️ Tu cuenta está suspendida desde <b>" . date("d/m/Y", strtotime($inicio_susp)) . "</b> hasta <b>" . date("d/m/Y", strtotime($fin_susp)) . "</b>. Contacta con soporte si crees que es un error.";
+                    $mensaje = "⚠️ Cuenta suspendida desde <b>" . date("d/m/Y", strtotime($inicio_susp)) .
+                               "</b> hasta <b>" . date("d/m/Y", strtotime($fin_susp)) . "</b>.";
                     $tipoMensaje = "warning";
+
                 } elseif ($estado === 'Inactivo') {
-                    $mensaje = "❌ Tu cuenta está inactiva. Por favor, contacta con soporte para reactivarla.";
+                    $mensaje = "❌ Tu cuenta está inactiva.";
                     $tipoMensaje = "danger";
+
                 } else {
-                    // ✅ Usuario válido
+                    // Login correcto
                     $_SESSION['intentos'] = 0;
                     $_SESSION['bloqueado_hasta'] = 0;
                     $_SESSION['ciclos_bloqueo'] = 0;
@@ -76,26 +107,29 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
                         'estado' => $estado
                     ];
 
-                    // Redirección con pantalla de carga
+                    // Redirección con animación
                     echo "<script>
                         sessionStorage.setItem('loginSuccess', 'true');
                         window.location.href = 'usuario-login.php';
                     </script>";
                     exit();
                 }
+
             } else {
                 $_SESSION['intentos']++;
                 $mensaje = "Contraseña incorrecta ❌ Intento #" . $_SESSION['intentos'];
                 $tipoMensaje = "danger";
             }
+
         } else {
             $_SESSION['intentos']++;
             $mensaje = "Usuario no encontrado ❌ Intento #" . $_SESSION['intentos'];
             $tipoMensaje = "danger";
         }
 
-        // 🔁 Bloqueo si excede intentos
+        // Bloqueo por intentos
         $limite = ($_SESSION['ciclos_bloqueo'] >= 1) ? 2 : 4;
+
         if ($_SESSION['intentos'] >= $limite) {
             $_SESSION['intentos'] = 0;
             $_SESSION['ciclos_bloqueo']++;
@@ -113,6 +147,7 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inicio de Sesión</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
   <style>
     body {
       background-color: #1a1a1d;
@@ -222,7 +257,7 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
   <p>Cargando...</p>
 </div>
 
-<!-- Pantalla de éxito (animación al iniciar sesión) -->
+<!-- Pantalla de éxito -->
 <div id="successScreen" style="display:none;">
   <div class="spinner"></div>
   <p>Iniciando sesión...</p>
@@ -234,6 +269,8 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
   <form method="POST" action="">
     <h2>Iniciar Sesión</h2>
 
+    <input type="hidden" name="csrf" value="<?php echo $csrf_token; ?>">
+
     <?php if (!empty($mensaje)): ?>
       <div class="alert alert-<?php echo $tipoMensaje; ?> text-center" id="alerta">
         <?php echo $mensaje; ?>
@@ -242,14 +279,16 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
 
     <div class="mb-3">
       <label for="loginUsername" class="form-label">Nombre de Usuario</label>
-      <input type="text" class="form-control" id="loginUsername" name="username" required <?php echo (isset($restante) ? 'disabled' : ''); ?>>
+      <input type="text" class="form-control" id="loginUsername" name="username" required <?php echo isset($restante) ? 'disabled' : ''; ?>>
     </div>
     <div class="mb-3">
       <label for="loginPassword" class="form-label">Contraseña</label>
-      <input type="password" class="form-control" id="loginPassword" name="password" required <?php echo (isset($restante) ? 'disabled' : ''); ?>>
+      <input type="password" class="form-control" id="loginPassword" name="password" required <?php echo isset($restante) ? 'disabled' : ''; ?>>
     </div>
-    <button type="submit" class="btn btn-custom" id="loginButton" <?php echo (isset($restante) ? 'disabled' : ''); ?>>Ingresar</button>
-    <p class="text-center mt-3">¿No tienes cuenta? 
+    <button type="submit" class="btn btn-custom" id="loginButton" <?php echo isset($restante) ? 'disabled' : ''; ?>>Ingresar</button>
+
+    <p class="text-center mt-3">
+      ¿No tienes cuenta? 
       <a href="usuario-register.php" class="toggle-link">Regístrate aquí</a>
     </p>
   </form>
@@ -258,20 +297,20 @@ if ($ahora < $_SESSION['bloqueado_hasta']) {
 <div id="contador"></div>
 
 <script>
-// Ocultar pantalla de carga inicial
 window.addEventListener("load", () => {
   setTimeout(() => document.getElementById("loadingScreen").style.display = "none", 800);
 });
 
-// Mostrar pantalla de éxito si el login fue correcto
+// Éxito
 if (sessionStorage.getItem("loginSuccess") === "true") {
   document.getElementById("successScreen").style.display = "flex";
   sessionStorage.removeItem("loginSuccess");
   setTimeout(() => window.location.href = "usuario-index.php", 2500);
 }
 
-// 🔁 Contador de bloqueo dinámico
+// Contador de bloqueo
 const tiempoRestante = <?php echo isset($restante) ? $restante : 0; ?>;
+
 if (tiempoRestante > 0) {
   const contador = document.getElementById("contador");
   const inputs = document.querySelectorAll("input");
@@ -288,6 +327,7 @@ if (tiempoRestante > 0) {
   const interval = setInterval(() => {
     segundos--;
     contador.textContent = "Bloqueado por " + segundos + "s";
+
     if (segundos <= 0) {
       clearInterval(interval);
       contador.style.display = "none";

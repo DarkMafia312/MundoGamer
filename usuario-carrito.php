@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
 include 'conexion.php';
 

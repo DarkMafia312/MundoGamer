@@ -1,12 +1,9 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php';
+verificarUsuario("usuario");
 include 'conexion.php';
-
-// Verificar sesión activa
-if (!isset($_SESSION['usuario'])) {
-    header("Location: usuario-login.php");
-    exit();
-}
 
 $usuario = $_SESSION['usuario'];
 

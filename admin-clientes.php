@@ -1,11 +1,19 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+
+// ===== SECURITY =====
+require_once "security.php";
+require_admin();
+// =======================================
+
 include 'conexion.php';
 
 // === Cargar PhpSpreadsheet ===
 require __DIR__ . '/vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
 // ==================== EXPORTAR CLIENTES A EXCEL ====================
 if (isset($_GET['export'])) {
     $spreadsheet = new Spreadsheet();
@@ -54,7 +62,6 @@ if (isset($_GET['export'])) {
         $fila++;
     }
 
-    // Ajuste automático de columnas
     foreach (range('A', 'K') as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
@@ -67,6 +74,7 @@ if (isset($_GET['export'])) {
     exit;
 }
 
+// VALIDAR QUE EL ADMIN ESTÁ LOGEADO (SESION CORRECTA)
 if (!isset($_SESSION['usuario_admin'])) {
   header("Location: admin-login.php");
   exit();

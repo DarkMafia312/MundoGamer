@@ -1,7 +1,7 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
 include 'conexion.php';
-
 // Verificar si el usuario ha iniciado sesión
 if (!isset($_SESSION['usuario'])) {
   header("Location: usuario-login.php");

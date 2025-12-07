@@ -1,0 +1,1 @@
+{"version":2,"defects":[],"times":{"StaticAnalysisTest::testSintaxisPHPValida":2.331,"StaticAnalysisTest::testConvencionesDeNombresDeClases":0.001,"StaticAnalysisTest::testArchivosSinCodigoMuerto":0.004,"StaticAnalysisTest::testFormatoDeIndentacionBasico":0.005}}

@@ -1,11 +1,16 @@
 <?php
-require_once 'database.php';
+require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/database.php';
 
-$db = new Database();
-
-$conn = $db->getConnection();
-
-if ($conn->connect_error) {
-    die("❌ Error de conexión: " . $conn->connect_error);
+try {
+    $db = new Database();
+    $conn = $db->getConnection();
+} catch (Exception $e) {
+    error_log("Error en conexion.php: " . $e->getMessage());
+    http_response_code(500);
+    echo "Error al conectar con la base de datos.";
+    exit;
 }
+
+return $conn;
 ?>

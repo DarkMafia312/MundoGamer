@@ -1,26 +1,85 @@
 <?php
-include 'conexion.php'; // Tu archivo de conexión (debe crear $conn con MySQLi)
+// ===============================
+// 🔒 CONFIGURACIÓN DE SEGURIDAD
+// ===============================
+require_once __DIR__ . '/sentry.php';
+session_start([
+    'cookie_httponly' => true,
+    'cookie_secure'   => isset($_SERVER['HTTPS']),
+    'cookie_samesite' => 'Strict'
+]);
+
+include 'conexion.php';
+
+// Generar CSRF
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+// Función de limpieza segura
+function limpiar($data) {
+    return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
+}
 
 $mensaje = '';
 $registroExitoso = false;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $nombre = trim($_POST['registerName'] ?? '');
-    $apellido = trim($_POST['registerLastname'] ?? '');
-    $username = trim($_POST['registerUsername'] ?? '');
-    $correo = trim($_POST['registerEmail'] ?? '');
-    $telefono = trim($_POST['registerPhone'] ?? '');
-    $fechaNacimiento = trim($_POST['registerBirthdate'] ?? '');
-    $direccion = trim($_POST['registerAddress'] ?? '');
-    $password = trim($_POST['registerPassword'] ?? '');
-    $confirmPassword = trim($_POST['registerConfirmPassword'] ?? '');
 
-    if (empty($nombre) || empty($apellido) || empty($username) || empty($correo) || empty($telefono) || empty($fechaNacimiento) || empty($direccion) || empty($password)) {
+    // Verificar CSRF
+    if (!isset($_POST['csrf']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf'])) {
+        die("⚠️ Token CSRF inválido.");
+    }
+
+    $nombre           = limpiar($_POST['registerName'] ?? '');
+    $apellido         = limpiar($_POST['registerLastname'] ?? '');
+    $username         = strtolower(limpiar($_POST['registerUsername'] ?? ''));
+    $correo           = limpiar($_POST['registerEmail'] ?? '');
+    $telefono         = limpiar($_POST['registerPhone'] ?? '');
+    $fechaNacimiento  = limpiar($_POST['registerBirthdate'] ?? '');
+    $direccion        = limpiar($_POST['registerAddress'] ?? '');
+    $password         = trim($_POST['registerPassword'] ?? '');
+    $confirmPassword  = trim($_POST['registerConfirmPassword'] ?? '');
+
+    // ===============================
+    // VALIDACIONES
+    // ===============================
+    if (
+        empty($nombre) || empty($apellido) || empty($username) || empty($correo) ||
+        empty($telefono) || empty($fechaNacimiento) || empty($direccion) ||
+        empty($password) || empty($confirmPassword)
+    ) {
         $mensaje = "Todos los campos son obligatorios.";
-    } elseif ($password !== $confirmPassword) {
+    }
+    elseif (!preg_match("/^[A-Za-zÁÉÍÓÚÑáéíóúñ ]{2,30}$/u", $nombre)) {
+        $mensaje = "El nombre contiene caracteres inválidos.";
+    }
+    elseif (!preg_match("/^[A-Za-zÁÉÍÓÚÑáéíóúñ ]{2,30}$/u", $apellido)) {
+        $mensaje = "El apellido contiene caracteres inválidos.";
+    }
+    elseif (!preg_match("/^[a-z0-9_]{4,20}$/", $username)) {
+        $mensaje = "El nombre de usuario solo puede tener letras, números y guiones bajos.";
+    }
+    elseif (!preg_match("/^[\\w._%+-]+@(gmail|outlook)\.com$/", $correo)) {
+        $mensaje = "El correo debe ser Gmail u Outlook.";
+    }
+    elseif (!preg_match("/^[0-9]{9}$/", $telefono)) {
+        $mensaje = "El teléfono debe tener 9 dígitos.";
+    }
+    elseif (strlen($direccion) < 5 || strlen($direccion) > 100) {
+        $mensaje = "La dirección debe tener entre 5 y 100 caracteres.";
+    }
+    elseif ($password !== $confirmPassword) {
         $mensaje = "Las contraseñas no coinciden.";
-    } else {
-        // Verificar si el usuario o correo ya existen
+    }
+    elseif (strlen($password) < 8) {
+        $mensaje = "La contraseña debe tener al menos 8 caracteres.";
+    }
+    else {
+        // ===============================
+        // Verificar si usuario o correo existen
+        // ===============================
         $stmt = $conn->prepare("SELECT COUNT(*) FROM usuarios WHERE username = ? OR correo = ?");
         $stmt->bind_param("ss", $username, $correo);
         $stmt->execute();
@@ -31,16 +90,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if ($count > 0) {
             $mensaje = "El nombre de usuario o correo ya está en uso.";
         } else {
+            // ===============================
+            // Registrar Usuario
+            // ===============================
             $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
-            $stmt = $conn->prepare("INSERT INTO usuarios (nombre, apellido, username, correo, telefono, fechaNacimiento, direccion, password, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo')");
-            $stmt->bind_param("ssssssss", $nombre, $apellido, $username, $correo, $telefono, $fechaNacimiento, $direccion, $passwordHash);
+            $stmt = $conn->prepare("
+                INSERT INTO usuarios 
+                (nombre, apellido, username, correo, telefono, fechaNacimiento, direccion, password, estado) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo')
+            ");
+
+            $stmt->bind_param("ssssssss",
+                $nombre,
+                $apellido,
+                $username,
+                $correo,
+                $telefono,
+                $fechaNacimiento,
+                $direccion,
+                $passwordHash
+            );
 
             if ($stmt->execute()) {
                 $registroExitoso = true;
             } else {
-                $mensaje = "Error al registrar el usuario: " . $conn->error;
+                $mensaje = "Error al registrar el usuario.";
             }
+
             $stmt->close();
         }
     }
@@ -53,7 +130,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Registro de Usuario</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
+/* ——————————————————————
+  🎨 ESTILOS ORIGINALES (SIN CAMBIOS)
+—————————————————————— */
 body {
   background-color:#1a1a1d;
   color:white;
@@ -144,34 +225,44 @@ h2 { text-align:center; margin-bottom:20px; color:#4aff47;}
     <?php endif; ?>
 
     <form method="POST" id="registerForm">
+
+        <input type="hidden" name="csrf" value="<?= $csrf_token ?>">
+
         <div class="mb-3">
             <label class="form-label">Nombre</label>
             <input type="text" class="form-control" name="registerName" required pattern="[A-Za-zÁÉÍÓÚÑáéíóúñ ]{2,30}">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Apellido</label>
             <input type="text" class="form-control" name="registerLastname" required pattern="[A-Za-zÁÉÍÓÚÑáéíóúñ ]{2,30}">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Nombre de Usuario</label>
             <input type="text" class="form-control" name="registerUsername" required minlength="4" maxlength="20">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Correo electrónico</label>
             <input type="email" class="form-control" name="registerEmail" required pattern="^[\\w._%+-]+@(gmail|outlook)\\.com$">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Teléfono</label>
             <input type="tel" class="form-control" name="registerPhone" required pattern="^[0-9]{9}$" maxlength="9">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Fecha de Nacimiento</label>
             <input type="date" class="form-control" name="registerBirthdate" required>
         </div>
+
         <div class="mb-3">
             <label class="form-label">Dirección</label>
             <input type="text" class="form-control" name="registerAddress" required minlength="5" maxlength="100">
         </div>
+
         <div class="mb-3">
             <label class="form-label">Contraseña</label>
             <input type="password" class="form-control" name="registerPassword" required id="registerPassword">
@@ -180,17 +271,23 @@ h2 { text-align:center; margin-bottom:20px; color:#4aff47;}
                 <small id="passwordFeedback"></small>
             </div>
         </div>
+
         <div class="mb-3">
             <label class="form-label">Confirmar Contraseña</label>
             <input type="password" class="form-control" name="registerConfirmPassword" required>
         </div>
+
         <button type="submit" class="btn btn-custom">Registrarse</button>
-        <p class="text-center mt-3">¿Ya tienes cuenta? 
-          <a href="usuario-login.php" class="text-success">Inicia sesión</a></p>
+
+        <p class="text-center mt-3">
+            ¿Ya tienes cuenta? 
+            <a href="usuario-login.php" class="text-success">Inicia sesión</a>
+        </p>
+
     </form>
 </div>
 
-<?php if($registroExitoso): ?>
+<?php if ($registroExitoso): ?>
 <div class="success-overlay" id="successOverlay">
   <div class="checkmark"></div>
   <p>✅ Registro completado correctamente</p>
@@ -225,8 +322,10 @@ passwordInput.addEventListener('input', () => {
 
     switch(strength) {
         case 1: strengthBar.style.width="20%"; strengthBar.className="bg-danger w-20"; feedback.textContent="Débil ❌"; break;
-        case 2: case 3: strengthBar.style.width="60%"; strengthBar.className="bg-warning w-60"; feedback.textContent="Moderada ⚠️"; break;
-        case 4: case 5: strengthBar.style.width="100%"; strengthBar.className="bg-success w-100"; feedback.textContent="Fuerte ✅"; break;
+        case 2:
+        case 3: strengthBar.style.width="60%"; strengthBar.className="bg-warning w-60"; feedback.textContent="Moderada ⚠️"; break;
+        case 4:
+        case 5: strengthBar.style.width="100%"; strengthBar.className="bg-success w-100"; feedback.textContent="Fuerte ✅"; break;
     }
 });
 </script>

@@ -1,12 +1,9 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php';
+verificarUsuario("usuario");
 include 'conexion.php';
-
-// Verificar sesión activa
-if (!isset($_SESSION['usuario'])) {
-  header("Location: usuario-login.php");
-  exit();
-}
 
 $usuarioSesion = $_SESSION['usuario'];
 ?>
@@ -201,7 +198,7 @@ $usuarioSesion = $_SESSION['usuario'];
     <a href="usuario-index.php">Inicio</a>
     <a href="usuario-galeria.php">Galería</a>
     <a href="usuario-carrito.php">Carrito</a>
-    <a href="ayuda-cliente.php">Ayuda</a>
+    <a href="ayuda_cliente.php">Ayuda</a>
   </div>
 </nav>
 

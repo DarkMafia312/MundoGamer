@@ -1,5 +1,7 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 require __DIR__ . '/vendor/autoload.php';
+include("security.php");
 include('conexion.php'); // tu conexión normal
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;

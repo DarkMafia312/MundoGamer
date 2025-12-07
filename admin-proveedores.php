@@ -1,105 +1,169 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
-include('conexion.php');
 
-// Carga de dependencias de Composer (una sola vez)
-require __DIR__ . '/vendor/autoload.php';
+// ------------------ Inicialización segura ------------------
+require_once __DIR__ . '/security.php'; // bootstrap de seguridad (secure_bootstrap se ejecuta ahí)
+require_once __DIR__ . '/conexion.php'; // crea $conn (MySQLi)
+require __DIR__ . '/vendor/autoload.php'; // PhpSpreadsheet
 
-// Importaciones de clases (DEBEN ir fuera de cualquier función o if)
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-// === EXPORTAR A EXCEL ===
+// Asegurar que el usuario sea admin: (aquí asumimos que tu lógica de admin usa $_SESSION['usuario_admin'])
+if (empty($_SESSION['usuario_admin'])) {
+    // redirigir al login de administradores
+    header('Location: admin-login.php');
+    exit();
+}
+
+// ------------------ Helpers ------------------
+// Reutiliza clean_input() de security.php y agrega un wrapper que también use real_escape_string
+function db_clean($value, $conn) {
+    // usa la limpieza de security y además escapa para consultas (aunque usamos prepared statements)
+    return $conn->real_escape_string(clean_input($value));
+}
+
+// ------------------ ACCIONES: EXPORT / POST / DELETE ------------------
+
+// EXPORT (GET) — requiere token CSRF para evitar abusos via GET
 if (isset($_GET['export'])) {
-    $spreadsheet = new Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Proveedores');
-
-    // Encabezados
-    $sheet->setCellValue('A1', 'ID');
-    $sheet->setCellValue('B1', 'Empresa');
-    $sheet->setCellValue('C1', 'RUC');
-    $sheet->setCellValue('D1', 'Teléfono');
-    $sheet->setCellValue('E1', 'Correo');
-    $sheet->setCellValue('F1', 'Dirección');
-    $sheet->setCellValue('G1', 'Paga');
-    $sheet->setCellValue('H1', 'Fecha Registro');
-
-    // Datos
-    $query = $conn->query("SELECT * FROM proveedores ORDER BY id ASC");
-    $fila = 2;
-    while ($row = $query->fetch_assoc()) {
-        $sheet->setCellValue("A{$fila}", $row['id']);
-        $sheet->setCellValue("B{$fila}", $row['empresa']);
-        $sheet->setCellValue("C{$fila}", $row['ruc']);
-        $sheet->setCellValue("D{$fila}", $row['telefono']);
-        $sheet->setCellValue("E{$fila}", $row['correo']);
-        $sheet->setCellValue("F{$fila}", $row['direccion']);
-        $sheet->setCellValue("G{$fila}", $row['paga']);
-        $sheet->setCellValue("H{$fila}", $row['fechaRegistro']);
-        $fila++;
+    $token = $_GET['csrf'] ?? '';
+    if (!$token || !hash_equals($_SESSION['csrf_token'], $token)) {
+        http_response_code(403);
+        die("Acción no autorizada.");
     }
 
-    // Estilos simples
-    foreach (range('A', 'H') as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
+    try {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Proveedores');
+
+        // Encabezados
+        $sheet->setCellValue('A1', 'ID');
+        $sheet->setCellValue('B1', 'Empresa');
+        $sheet->setCellValue('C1', 'RUC');
+        $sheet->setCellValue('D1', 'Teléfono');
+        $sheet->setCellValue('E1', 'Correo');
+        $sheet->setCellValue('F1', 'Dirección');
+        $sheet->setCellValue('G1', 'Paga');
+        $sheet->setCellValue('H1', 'Fecha Registro');
+
+        // Datos (prepared not necessary aquí porque no hay input, pero mantenemos query segura)
+        $query = $conn->query("SELECT id, empresa, ruc, telefono, correo, direccion, paga, fechaRegistro FROM proveedores ORDER BY id ASC");
+        $fila = 2;
+        while ($row = $query->fetch_assoc()) {
+            $sheet->setCellValue("A{$fila}", $row['id']);
+            $sheet->setCellValue("B{$fila}", $row['empresa']);
+            $sheet->setCellValue("C{$fila}", $row['ruc']);
+            $sheet->setCellValue("D{$fila}", $row['telefono']);
+            $sheet->setCellValue("E{$fila}", $row['correo']);
+            $sheet->setCellValue("F{$fila}", $row['direccion']);
+            $sheet->setCellValue("G{$fila}", $row['paga']);
+            $sheet->setCellValue("H{$fila}", $row['fechaRegistro']);
+            $fila++;
+        }
+
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = "proveedores_MundoGamer.xlsx";
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"$filename\"");
+        $writer = new Xlsx($spreadsheet);
+        $writer->save("php://output");
+        exit;
+    } catch (Throwable $e) {
+        error_log("Export failed: " . $e->getMessage());
+        http_response_code(500);
+        echo "Error al generar el archivo. Intenta más tarde.";
+        exit;
+    }
+}
+
+// POST: agregar / editar — exigir verificación CSRF
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Verifica CSRF (esta función abortará en caso de falla)
+    csrf_verify_or_die();
+
+    // recoger y sanitizar
+    $id = (isset($_POST['proveedorId']) && $_POST['proveedorId'] !== "") ? (int) $_POST['proveedorId'] : null;
+    $empresa = db_clean($_POST['nombreEmpresa'] ?? '', $conn);
+    $ruc = db_clean($_POST['rucProveedor'] ?? '', $conn);
+    $telefono = db_clean($_POST['telefonoProveedor'] ?? '', $conn);
+    $correo = db_clean($_POST['correoProveedor'] ?? '', $conn);
+    $direccion = db_clean($_POST['direccionProveedor'] ?? '', $conn);
+    $paga = db_clean($_POST['pagaProveedor'] ?? '', $conn);
+
+    // Validaciones básicas
+    if ($empresa === '' || $ruc === '' || $telefono === '' || $correo === '' || $direccion === '' || $paga === '') {
+        $_SESSION['mensaje'] = "Por favor completa todos los campos.";
+        header("Location: admin-proveedores.php");
+        exit();
     }
 
-    // Descargar el archivo
-    $filename = "proveedores_MundoGamer.xlsx";
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header("Content-Disposition: attachment; filename=\"$filename\"");
-    $writer = new Xlsx($spreadsheet);
-    $writer->save("php://output");
-    exit;
-}
-
-function clean($data, $conn){
-    return htmlspecialchars($conn->real_escape_string($data));
-}
-
-if($_SERVER['REQUEST_METHOD'] === 'POST'){
-    $id = isset($_POST['proveedorId']) && $_POST['proveedorId'] !== "" ? (int)$_POST['proveedorId'] : null;
-    $empresa = clean($_POST['nombreEmpresa'], $conn);
-    $ruc = clean($_POST['rucProveedor'], $conn);
-    $telefono = clean($_POST['telefonoProveedor'], $conn);
-    $correo = clean($_POST['correoProveedor'], $conn);
-    $direccion = clean($_POST['direccionProveedor'], $conn);
-    $paga = clean($_POST['pagaProveedor'], $conn);
-
-    if($id){ 
+    // Insert / Update con prepared statements (ya estaban, se mantienen)
+    if ($id) {
         $stmt = $conn->prepare("UPDATE proveedores SET empresa=?, ruc=?, telefono=?, correo=?, direccion=?, paga=? WHERE id=?");
         $stmt->bind_param("ssssssi", $empresa, $ruc, $telefono, $correo, $direccion, $paga, $id);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['mensaje'] = "Proveedor actualizado correctamente ✅";
+        } else {
+            error_log("Update proveedor failed: " . $stmt->error);
+            $_SESSION['mensaje'] = "Error al actualizar proveedor.";
+        }
         $stmt->close();
-        $_SESSION['mensaje'] = "Proveedor actualizado correctamente ✅";
-    } else { 
+    } else {
         $stmt = $conn->prepare("INSERT INTO proveedores (empresa,ruc,telefono,correo,direccion,paga) VALUES (?,?,?,?,?,?)");
         $stmt->bind_param("ssssss", $empresa, $ruc, $telefono, $correo, $direccion, $paga);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['mensaje'] = "Proveedor agregado correctamente ✅";
+        } else {
+            error_log("Insert proveedor failed: " . $stmt->error);
+            $_SESSION['mensaje'] = "Error al agregar proveedor.";
+        }
         $stmt->close();
-        $_SESSION['mensaje'] = "Proveedor agregado correctamente ✅";
     }
 
     header("Location: admin-proveedores.php");
     exit();
 }
 
-if(isset($_GET['delete'])){
-    $id = (int)$_GET['delete'];
-    $conn->query("DELETE FROM proveedores WHERE id=$id");
-    $_SESSION['mensaje'] = "Proveedor eliminado correctamente 🗑️";
+// DELETE vía GET (requerimos token CSRF en querystring para mitigación)
+// Nota: idealmente el delete debería hacerse por POST, pero preservamos la UX añadiendo CSRF check.
+if (isset($_GET['delete'])) {
+    $token = $_GET['csrf'] ?? '';
+    if (!$token || !hash_equals($_SESSION['csrf_token'], $token)) {
+        http_response_code(403);
+        die("Acción no autorizada.");
+    }
+
+    $id = (int) $_GET['delete'];
+    if ($id > 0) {
+        $stmt = $conn->prepare("DELETE FROM proveedores WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        if ($stmt->execute()) {
+            $_SESSION['mensaje'] = "Proveedor eliminado correctamente 🗑️";
+        } else {
+            error_log("Delete proveedor failed: " . $stmt->error);
+            $_SESSION['mensaje'] = "Error al eliminar proveedor.";
+        }
+        $stmt->close();
+    }
     header("Location: admin-proveedores.php");
     exit();
 }
 
-$result = $conn->query("SELECT * FROM proveedores ORDER BY id ASC");
+// Obtener proveedores (consulta simple)
+// usamos consulta directa porque no usamos entrada del usuario aquí
+$result = $conn->query("SELECT id, empresa, ruc, telefono, correo, direccion, paga, fechaRegistro FROM proveedores ORDER BY id ASC");
 $proveedores = [];
-while($row = $result->fetch_assoc()){
+while ($row = $result->fetch_assoc()) {
     $proveedores[] = $row;
 }
-?>
 
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -140,13 +204,14 @@ table tbody tr:hover { background: rgba(0,200,255,0.1); transform: scale(1.01); 
   <div id="alerta" class="alert alert-success text-center">
       <?php 
       if(isset($_SESSION['mensaje'])) { 
-          echo $_SESSION['mensaje']; 
+          echo htmlspecialchars($_SESSION['mensaje'], ENT_QUOTES); 
           unset($_SESSION['mensaje']); 
       } 
       ?>
   </div>
 
-  <form id="proveedorForm" class="mb-4" method="POST">
+  <form id="proveedorForm" class="mb-4" method="POST" action="">
+    <?php echo csrf_input_field(); // campo oculto CSRF ?>
     <input type="hidden" name="proveedorId" id="proveedorId">
     <div class="row g-3">
       <div class="col-md-6"><input type="text" name="nombreEmpresa" id="nombreEmpresa" class="form-control" placeholder="Nombre de la Empresa" required></div>
@@ -172,21 +237,21 @@ table tbody tr:hover { background: rgba(0,200,255,0.1); transform: scale(1.01); 
     <tbody>
       <?php foreach($proveedores as $p): ?>
       <tr>
-        <td><?= $p['id'] ?></td>
-        <td><?= $p['empresa'] ?></td>
-        <td><?= $p['ruc'] ?></td>
-        <td><?= $p['telefono'] ?></td>
-        <td><?= $p['correo'] ?></td>
-        <td><?= $p['direccion'] ?></td>
-        <td><?= $p['paga'] ?></td>
-        <td><?= $p['fechaRegistro'] ?></td>
+        <td><?= htmlspecialchars($p['id'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['empresa'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['ruc'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['telefono'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['correo'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['direccion'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['paga'], ENT_QUOTES) ?></td>
+        <td><?= htmlspecialchars($p['fechaRegistro'], ENT_QUOTES) ?></td>
         <td>
           <button type="button" class="action-btn edit" 
             title="Editar proveedor"
-            onclick="editarProveedor(<?= $p['id'] ?>,'<?= addslashes($p['empresa']) ?>','<?= addslashes($p['ruc']) ?>','<?= addslashes($p['telefono']) ?>','<?= addslashes($p['correo']) ?>','<?= addslashes($p['direccion']) ?>','<?= addslashes($p['paga']) ?>')">
+            onclick="editarProveedor(<?= (int)$p['id'] ?>,'<?= addslashes(htmlspecialchars($p['empresa'], ENT_QUOTES)) ?>','<?= addslashes(htmlspecialchars($p['ruc'], ENT_QUOTES)) ?>','<?= addslashes(htmlspecialchars($p['telefono'], ENT_QUOTES)) ?>','<?= addslashes(htmlspecialchars($p['correo'], ENT_QUOTES)) ?>','<?= addslashes(htmlspecialchars($p['direccion'], ENT_QUOTES)) ?>','<?= addslashes(htmlspecialchars($p['paga'], ENT_QUOTES)) ?>')">
             <i class="fas fa-pencil-alt"></i>
           </button>
-          <a href="?delete=<?= $p['id'] ?>" class="action-btn delete" title="Eliminar proveedor" onclick="return confirm('Eliminar este proveedor?')">
+          <a href="?delete=<?= (int)$p['id'] ?>&csrf=<?= urlencode($_SESSION['csrf_token']) ?>" class="action-btn delete" title="Eliminar proveedor" onclick="return confirm('Eliminar este proveedor?')">
             <i class="fas fa-trash-alt"></i>
           </a>
         </td>
@@ -197,7 +262,7 @@ table tbody tr:hover { background: rgba(0,200,255,0.1); transform: scale(1.01); 
 
   <div class="d-flex justify-content-between">
     <a href="admin-dashboard.php" class="btn btn-secondary mt-3"><i class="fas fa-arrow-left"></i> Volver</a>
-    <a href="?export=1" class="btn btn-success mt-3"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
+    <a href="?export=1&csrf=<?= urlencode($_SESSION['csrf_token']) ?>" class="btn btn-success mt-3"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
   </div>
 </div>
 

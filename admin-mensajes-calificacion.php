@@ -1,6 +1,9 @@
 <?php
+require_once __DIR__ . '/sentry.php';
 session_start();
+include 'security.php'; // 🔒 AGREGADO: Protección de sesión del administrador
 include 'conexion.php';
+
 require __DIR__ . '/vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -55,12 +58,10 @@ if (isset($_GET['export'])) {
         $fila++;
     }
 
-    // Ajuste de ancho
     foreach (range('A', 'L') as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
 
-    // Descargar
     $filename = "mensajes_calificaciones_MundoGamer.xlsx";
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header("Content-Disposition: attachment; filename=\"$filename\"");
@@ -69,11 +70,8 @@ if (isset($_GET['export'])) {
     exit;
 }
 
-
-if (!isset($_SESSION['usuario_admin'])) {
-  header("Location: admin-login.php");
-  exit();
-}
+// ⛔ Ya NO es necesario validar aquí, security.php lo hace automáticamente
+// if (!isset($_SESSION['usuario_admin'])) { ... }
 
 // ✅ Procesar acciones AJAX
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion'])) {
@@ -116,14 +114,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion'])) {
   }
 }
 
-// ✅ Consultas
+// Consultas
 $usuarios = $conn->query("SELECT id, nombre, apellido, correo FROM usuarios");
+
 $soporte = $conn->query("
   SELECT s.*, u.nombre, u.apellido
   FROM soporte_cliente s
   INNER JOIN usuarios u ON s.id_usuario = u.id
   ORDER BY s.fecha_envio DESC
 ");
+
 $calificaciones = $conn->query("
   SELECT c.*, p.titulo AS producto, u.nombre, u.apellido
   FROM calificaciones c
@@ -132,6 +132,7 @@ $calificaciones = $conn->query("
   ORDER BY c.fecha_registro DESC
 ");
 ?>
+
 
 <!DOCTYPE html>
 <html lang="es">
